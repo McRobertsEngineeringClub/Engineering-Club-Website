@@ -21,37 +21,29 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     setError("")
 
     try {
-      // AUTHORIZED EMAILS - automatic access (no password needed)
-      const authorizedEmails = ["club1engineering@gmail.com", "hms.engineering@mcroberts.ca", "admin@mcroberts.ca"]
-
-      // Check if email is in authorized list
-      if (authorizedEmails.includes(email.trim().toLowerCase())) {
-        // Remove debug logging for security
-        localStorage.setItem("isAdminLoggedIn", "true")
-        localStorage.setItem("adminEmail", email.trim())
-        onClose()
-        return
-      }
-
-      // Fallback: Check against environment variables
+      // Get admin credentials from environment variables ONLY
       const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
       const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD
 
-      if (
-        adminEmail &&
-        adminPassword &&
-        email.trim().toLowerCase() === adminEmail.toLowerCase() &&
-        password === adminPassword
-      ) {
+      // Check if environment variables are configured
+      if (!adminEmail || !adminPassword) {
+        setError("Admin credentials not configured. Contact system administrator.")
+        return
+      }
+
+      // SECURE CHECK: Both email AND password must match
+      if (email.trim().toLowerCase() === adminEmail.toLowerCase() && password === adminPassword) {
+        console.log("✅ Admin credentials verified!")
         localStorage.setItem("isAdminLoggedIn", "true")
         localStorage.setItem("adminEmail", email.trim())
         onClose()
         return
       }
 
-      // Generic error message (don't reveal which part failed)
-      setError("Invalid credentials. Please check your email and password.")
+      // If credentials don't match, deny access
+      setError("Invalid email or password. Access denied.")
     } catch (err) {
+      console.error("Login error:", err)
       setError("An error occurred during login.")
     } finally {
       setLoading(false)
@@ -73,7 +65,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address
+              Admin Email
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -83,7 +75,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="your.email@mcroberts.ca"
+                placeholder="Enter admin email"
                 required
               />
             </div>
@@ -91,7 +83,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              Password
+              Admin Password
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -101,7 +93,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your password"
+                placeholder="Enter admin password"
+                required
               />
               <button
                 type="button"
@@ -115,7 +108,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !email || !password}
             className="w-full bg-gradient-to-r from-blue-600 to-teal-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-teal-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Signing In..." : "Sign In"}
@@ -123,12 +116,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
         </form>
 
         <div className="px-6 pb-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">Access Information</h3>
-            <div className="text-blue-800 text-sm space-y-1">
-              <p>• Use your authorized club email address</p>
-              <p>• Contact admin if you need access</p>
-              <p>• Only club executives can access admin features</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h3 className="font-semibold text-red-900 mb-2">🔒 Secure Access</h3>
+            <div className="text-red-800 text-sm space-y-1">
+              <p>• Both email AND password are required</p>
+              <p>• Credentials are stored securely in environment variables</p>
+              <p>• Contact club supervisor if you need access</p>
             </div>
           </div>
         </div>
