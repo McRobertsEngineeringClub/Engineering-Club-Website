@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { supabase } from "../lib/supabase"
 import { Plus, X, ImageIcon, Check } from "lucide-react"
@@ -15,6 +14,7 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
   const [activeTab, setActiveTab] = useState<"project" | "announcement" | "executive">("announcement")
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [error, setError] = useState("")
 
   // Announcement form
   const [announcementTitle, setAnnouncementTitle] = useState("")
@@ -35,26 +35,21 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
   const [execGrade, setExecGrade] = useState(9)
   const [execImage, setExecImage] = useState<File | null>(null)
 
-  const uploadImage = async (file: File): Promise<string> => {
-    const fileExt = file.name.split(".").pop()
-    const fileName = `${Math.random()}.${fileExt}`
-    const filePath = `${fileName}`
-
-    const { error: uploadError } = await supabase.storage.from("images").upload(filePath, file)
-
-    if (uploadError) {
-      throw uploadError
-    }
-
-    const { data } = supabase.storage.from("images").getPublicUrl(filePath)
-
-    return data.publicUrl
+  // Convert image file to base64 data URL for simple storage
+  const convertImageToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
   }
 
   const handleAddAnnouncement = async () => {
     if (!announcementTitle || !announcementContent) return
 
     setLoading(true)
+    setError("")
     try {
       const expirationDate = new Date()
       expirationDate.setDate(expirationDate.getDate() + expirationDays)
@@ -78,6 +73,7 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
       onDataUpdate()
     } catch (error) {
       console.error("Error adding announcement:", error)
+      setError("Error adding announcement. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
@@ -87,10 +83,11 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
     if (!projectTitle || !projectDescription) return
 
     setLoading(true)
+    setError("")
     try {
       let imageUrl = ""
       if (projectImage) {
-        imageUrl = await uploadImage(projectImage)
+        imageUrl = await convertImageToDataUrl(projectImage)
       }
 
       const { error } = await supabase.from("projects").insert([
@@ -113,6 +110,7 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
       onDataUpdate()
     } catch (error) {
       console.error("Error adding project:", error)
+      setError("Error adding project. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
@@ -122,10 +120,11 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
     if (!execName || !execRole) return
 
     setLoading(true)
+    setError("")
     try {
       let imageUrl = ""
       if (execImage) {
-        imageUrl = await uploadImage(execImage)
+        imageUrl = await convertImageToDataUrl(execImage)
       }
 
       const currentYear = new Date().getFullYear()
@@ -153,6 +152,7 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
       onDataUpdate()
     } catch (error) {
       console.error("Error adding executive:", error)
+      setError("Error adding executive. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
@@ -160,6 +160,7 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
 
   const showSuccess = () => {
     setSuccess(true)
+    setError("")
     setTimeout(() => setSuccess(false), 3000)
   }
 
@@ -217,6 +218,8 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
             Executive
           </button>
         </div>
+
+        {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>}
 
         {activeTab === "announcement" && (
           <div className="space-y-3">
@@ -389,7 +392,6 @@ const QuickAddPanel: React.FC<QuickAddPanelProps> = ({ onDataUpdate }) => {
                 onChange={(e) => setExecGrade(Number.parseInt(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               >
-                <option value={8}>Grade 8</option>
                 <option value={9}>Grade 9</option>
                 <option value={10}>Grade 10</option>
                 <option value={11}>Grade 11</option>

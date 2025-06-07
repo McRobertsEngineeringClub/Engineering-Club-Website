@@ -3,7 +3,6 @@
 import type React from "react"
 import { useState } from "react"
 import { X, Mail, Lock, Eye, EyeOff } from "lucide-react"
-import { supabase } from "../lib/supabase"
 
 interface AuthModalProps {
   onClose: () => void
@@ -22,33 +21,45 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     setError("")
 
     try {
-      // Check if it's the admin credentials first
-      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD
+      // AUTHORIZED EMAILS - automatically grant access to these emails
+      const authorizedEmails = ["club1engineering@gmail.com", "hms.engineering@mcroberts.ca", "admin@mcroberts.ca"]
 
-      if (email === adminEmail && password === adminPassword) {
-        // For admin, we'll create a mock session
-        console.log("Admin login successful")
+      console.log("Checking credentials...")
+      console.log("Input email:", email.trim())
+      console.log("Authorized emails:", authorizedEmails)
+
+      // Check if email is in authorized list
+      if (authorizedEmails.includes(email.trim().toLowerCase())) {
+        console.log("✅ Authorized email detected - granting admin access!")
+
+        // Store login state in localStorage
+        localStorage.setItem("isAdminLoggedIn", "true")
+        localStorage.setItem("adminEmail", email.trim())
         onClose()
         return
       }
 
-      // Try regular Supabase authentication
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      // Fallback: Check against environment variables or hardcoded credentials
+      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || "club1engineering@gmail.com"
+      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "$1LpX#ZyW4o9k@T!3"
 
-      if (error) {
-        console.error("Supabase auth error:", error)
-        setError("Invalid email or password. Please check your credentials.")
-      } else {
-        console.log("Supabase login successful:", data)
+      console.log("Checking fallback credentials...")
+      console.log("Admin email:", adminEmail)
+      console.log("Input password:", password)
+
+      if (email.trim().toLowerCase() === adminEmail.toLowerCase() && password === adminPassword) {
+        console.log("✅ Fallback credentials matched!")
+        localStorage.setItem("isAdminLoggedIn", "true")
+        localStorage.setItem("adminEmail", email.trim())
         onClose()
+        return
       }
+
+      // If neither authorized email nor correct credentials
+      setError("Access denied. Please use an authorized email address or correct credentials.")
     } catch (err) {
-      console.error("Unexpected error:", err)
-      setError("An unexpected error occurred. Please try again.")
+      console.error("Login error:", err)
+      setError("An error occurred during login.")
     } finally {
       setLoading(false)
     }
@@ -121,14 +132,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
         <div className="px-6 pb-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">Test Credentials</h3>
+            <h3 className="font-semibold text-blue-900 mb-2">Quick Access</h3>
             <div className="text-blue-800 text-sm space-y-1">
-              <p>
-                <strong>Email:</strong> admin@mcroberts.ca
-              </p>
-              <p>
-                <strong>Password:</strong> HMSEngineering2024!
-              </p>
+              <p>• Authorized emails get automatic access</p>
+              <p>• Use your club email address</p>
+              <p>• Contact admin if you need access</p>
             </div>
           </div>
           <p className="text-center text-sm text-gray-600 mt-4">

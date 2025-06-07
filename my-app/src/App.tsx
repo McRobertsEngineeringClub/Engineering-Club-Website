@@ -15,46 +15,20 @@ import {
   Settings,
   LogIn,
   LogOut,
+  MessageCircle,
+  Instagram,
 } from "lucide-react"
 import { supabase } from "./lib/supabase"
 import AuthModal from "./components/AuthModal"
 import AdminPanel from "./components/AdminPanel"
 import QuickAddPanel from "./components/QuickAddPanel"
-
-interface Project {
-  id: string
-  title: string
-  description: string
-  image_url: string
-  technologies: string[]
-  github_url?: string
-  demo_url?: string
-  created_at: string
-}
-
-interface Executive {
-  id: string
-  name: string
-  grade: number
-  role: string
-  image_url: string
-  graduation_year: number
-  is_alumni: boolean
-  created_at: string
-}
-
-interface Announcement {
-  id: string
-  title: string
-  content: string
-  created_at: string
-  type: "meeting" | "project" | "competition" | "general"
-}
+import AutoDeployment from "./components/AutoDeployment"
+import type { Project, Executive, Announcement } from "./lib/types"
 
 function App() {
   const [currentYear] = useState(new Date().getFullYear())
+  const [currentMonth] = useState(new Date().getMonth() + 1) // 1-12
   const [activeTab, setActiveTab] = useState<"current" | "alumni">("current")
-  const [user, setUser] = useState<any>(null)
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showAdminPanel, setShowAdminPanel] = useState(false)
@@ -64,59 +38,102 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-    })
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
+    // Check for existing admin session
+    const adminLoggedIn = localStorage.getItem("isAdminLoggedIn") === "true"
+    setIsAdminLoggedIn(adminLoggedIn)
 
     // Load initial data
     loadData()
-
-    return () => subscription.unsubscribe()
   }, [])
 
   const loadData = async () => {
+    setLoading(true)
     try {
-      // Load projects
-      const { data: projectsData } = await supabase
+      // Load projects with better error handling
+      const { data: projectsData, error: projectsError } = await supabase
         .from("projects")
         .select("*")
         .order("created_at", { ascending: false })
 
-      if (projectsData) setProjects(projectsData)
+      if (projectsError) {
+        console.error("Error loading projects:", projectsError)
+        setProjects([]) // Set empty array on error
+      } else if (projectsData) {
+        // Safely cast the data
+        setProjects(
+          projectsData.map((item) => ({
+            id: item.id as string,
+            title: item.title as string,
+            description: item.description as string,
+            image_url: item.image_url as string,
+            technologies: (item.technologies as string[]) || [],
+            github_url: item.github_url as string | undefined,
+            demo_url: item.demo_url as string | undefined,
+            created_at: item.created_at as string,
+          })),
+        )
+      }
 
       // Load executives
-      const { data: execsData } = await supabase
+      const { data: execsData, error: execsError } = await supabase
         .from("executives")
         .select("*")
         .order("created_at", { ascending: false })
 
-      if (execsData) setExecutives(execsData)
+      if (execsError) {
+        console.error("Error loading executives:", execsError)
+        setExecutives([])
+      } else if (execsData) {
+        setExecutives(
+          execsData.map((item) => ({
+            id: item.id as string,
+            name: item.name as string,
+            grade: item.grade as number,
+            role: item.role as string,
+            image_url: item.image_url as string,
+            graduation_year: item.graduation_year as number,
+            is_alumni: item.is_alumni as boolean,
+            created_at: item.created_at as string,
+          })),
+        )
+      }
 
       // Load announcements
-      const { data: announcementsData } = await supabase
+      const { data: announcementsData, error: announcementsError } = await supabase
         .from("announcements")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(6)
 
-      if (announcementsData) setAnnouncements(announcementsData)
+      if (announcementsError) {
+        console.error("Error loading announcements:", announcementsError)
+        setAnnouncements([])
+      } else if (announcementsData) {
+        setAnnouncements(
+          announcementsData.map((item) => ({
+            id: item.id as string,
+            title: item.title as string,
+            content: item.content as string,
+            type: item.type as "meeting" | "project" | "competition" | "general",
+            created_at: item.created_at as string,
+            expires_at: item.expires_at as string | undefined,
+          })),
+        )
+      }
     } catch (error) {
       console.error("Error loading data:", error)
+      // Set empty arrays on error
+      setProjects([])
+      setExecutives([])
+      setAnnouncements([])
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
+  const handleSignOut = () => {
+    localStorage.removeItem("isAdminLoggedIn")
+    localStorage.removeItem("adminEmail")
     setIsAdminLoggedIn(false)
     setShowAdminPanel(false)
   }
@@ -124,6 +141,35 @@ function App() {
   const handleAuthSuccess = () => {
     setIsAdminLoggedIn(true)
     setShowAuthModal(false)
+  }
+
+  // Function to scroll to projects section
+  const scrollToProjects = () => {
+    const projectsSection = document.getElementById("projects")
+    if (projectsSection) {
+      projectsSection.scrollIntoView({ behavior: "smooth" })
+    }
+  }
+
+  // Improved alumni logic - considers school year ending in June
+  const isAlumni = (executive: Executive) => {
+    const graduationYear = executive.graduation_year
+
+    // If graduation year is in the past, definitely alumni
+    if (graduationYear < currentYear) return true
+
+    // If graduation year is in the future, definitely current
+    if (graduationYear > currentYear) return false
+
+    // If graduation year is current year, check if we're past June 20th
+    if (graduationYear === currentYear) {
+      // School ends June 20th, so after June 20th they become alumni
+      const currentDate = new Date()
+      const graduationDate = new Date(currentYear, 5, 20) // June 20th (month is 0-indexed)
+      return currentDate > graduationDate
+    }
+
+    return false
   }
 
   // Update the executive sorting logic to prioritize the president
@@ -140,10 +186,9 @@ function App() {
     return a.role.localeCompare(b.role)
   }
 
-  const currentExecutives = executives.filter((exec) => !exec.is_alumni).sort(sortByRole)
-
+  const currentExecutives = executives.filter((exec) => !isAlumni(exec)).sort(sortByRole)
   const alumniExecutives = executives
-    .filter((exec) => exec.is_alumni)
+    .filter((exec) => isAlumni(exec))
     .sort((a, b) => b.graduation_year - a.graduation_year) // Most recent graduates first
 
   const getAnnouncementIcon = (type: string) => {
@@ -185,6 +230,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* Auto-deployment component */}
+      <AutoDeployment />
+
       {/* Navigation */}
       <nav className="bg-white/90 backdrop-blur-sm shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -216,7 +264,7 @@ function App() {
                   Contact
                 </a>
               </div>
-              {user || isAdminLoggedIn ? (
+              {isAdminLoggedIn ? (
                 <div className="flex items-center space-x-3">
                   <button
                     onClick={() => setShowAdminPanel(true)}
@@ -267,10 +315,19 @@ function App() {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="bg-gradient-to-r from-blue-600 to-teal-600 text-white px-8 py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-lg">
-                  Join Our Club
-                </button>
-                <button className="border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-xl font-semibold hover:border-blue-600 hover:text-blue-600 transition-all duration-300 flex items-center justify-center space-x-2">
+                <a
+                  href="https://discord.gg/3mqBd9rtPJ"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-gradient-to-r from-blue-600 to-teal-600 text-white px-8 py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center justify-center space-x-2"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  <span>Join Our Discord</span>
+                </a>
+                <button
+                  onClick={scrollToProjects}
+                  className="border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-xl font-semibold hover:border-blue-600 hover:text-blue-600 transition-all duration-300 flex items-center justify-center space-x-2"
+                >
                   <span>View Projects</span>
                   <ChevronRight className="w-5 h-5" />
                 </button>
@@ -302,6 +359,7 @@ function App() {
         </div>
       </section>
 
+      {/* Rest of your sections remain the same... */}
       {/* Recent Announcements */}
       <section id="announcements" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -309,24 +367,32 @@ function App() {
             <h3 className="text-4xl font-bold text-gray-900 mb-4">Latest Announcements</h3>
             <p className="text-xl text-gray-600">Stay updated with our recent news and upcoming events</p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {announcements.map((announcement) => (
-              <div
-                key={announcement.id}
-                className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
-              >
-                <div className={`p-6 border-l-4 ${getAnnouncementColor(announcement.type)}`}>
-                  <div className="flex items-center space-x-3 mb-4">
-                    {getAnnouncementIcon(announcement.type)}
-                    <span className="text-sm font-semibold uppercase tracking-wide">{announcement.type}</span>
+          {announcements.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {announcements.map((announcement) => (
+                <div
+                  key={announcement.id}
+                  className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                >
+                  <div className={`p-6 border-l-4 ${getAnnouncementColor(announcement.type)}`}>
+                    <div className="flex items-center space-x-3 mb-4">
+                      {getAnnouncementIcon(announcement.type)}
+                      <span className="text-sm font-semibold uppercase tracking-wide">{announcement.type}</span>
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-3">{announcement.title}</h4>
+                    <p className="text-gray-600 mb-4 line-clamp-3">{announcement.content}</p>
+                    <div className="text-sm text-gray-500">
+                      {new Date(announcement.created_at).toLocaleDateString()}
+                    </div>
                   </div>
-                  <h4 className="text-xl font-bold text-gray-900 mb-3">{announcement.title}</h4>
-                  <p className="text-gray-600 mb-4 line-clamp-3">{announcement.content}</p>
-                  <div className="text-sm text-gray-500">{new Date(announcement.created_at).toLocaleDateString()}</div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 rounded-xl">
+              <p className="text-gray-600">No announcements yet. Check back soon!</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -337,59 +403,65 @@ function App() {
             <h3 className="text-4xl font-bold text-gray-900 mb-4">Featured Projects</h3>
             <p className="text-xl text-gray-600">Innovative solutions built by our talented members</p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2"
-              >
-                <div className="relative">
-                  <img
-                    src={project.image_url || "/placeholder.svg"}
-                    alt={project.title}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
-                    {new Date(project.created_at).toLocaleDateString()}
+          {projects.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {projects.map((project) => (
+                <div
+                  key={project.id}
+                  className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2"
+                >
+                  <div className="relative">
+                    <img
+                      src={project.image_url || "/placeholder.svg"}
+                      alt={project.title}
+                      className="w-full h-48 object-cover"
+                    />
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
+                      {new Date(project.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <h4 className="text-xl font-bold text-gray-900 mb-3">{project.title}</h4>
+                    <p className="text-gray-600 mb-4 line-clamp-3">{project.description}</p>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {project.technologies.map((tech, index) => (
+                        <span
+                          key={index}
+                          className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium"
+                        >
+                          {tech}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex space-x-3">
+                      {project.github_url && (
+                        <a
+                          href={project.github_url}
+                          className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 transition-colors"
+                        >
+                          <Github className="w-5 h-5" />
+                          <span>Code</span>
+                        </a>
+                      )}
+                      {project.demo_url && (
+                        <a
+                          href={project.demo_url}
+                          className="flex items-center space-x-2 text-gray-600 hover:text-teal-600 transition-colors"
+                        >
+                          <ExternalLink className="w-5 h-5" />
+                          <span>Demo</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="p-6">
-                  <h4 className="text-xl font-bold text-gray-900 mb-3">{project.title}</h4>
-                  <p className="text-gray-600 mb-4 line-clamp-3">{project.description}</p>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {project.technologies.map((tech, index) => (
-                      <span
-                        key={index}
-                        className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium"
-                      >
-                        {tech}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex space-x-3">
-                    {project.github_url && (
-                      <a
-                        href={project.github_url}
-                        className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 transition-colors"
-                      >
-                        <Github className="w-5 h-5" />
-                        <span>Code</span>
-                      </a>
-                    )}
-                    {project.demo_url && (
-                      <a
-                        href={project.demo_url}
-                        className="flex items-center space-x-2 text-gray-600 hover:text-teal-600 transition-colors"
-                      >
-                        <ExternalLink className="w-5 h-5" />
-                        <span>Demo</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-white rounded-xl shadow-md">
+              <p className="text-gray-600">No projects yet. Check back soon!</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -430,27 +502,35 @@ function App() {
           </div>
 
           {/* Executives Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {(activeTab === "current" ? currentExecutives : alumniExecutives).map((executive) => (
-              <div
-                key={executive.id}
-                className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
-              >
-                <div className="p-6 text-center">
-                  <img
-                    src={executive.image_url || "/placeholder.svg"}
-                    alt={executive.name}
-                    className="w-20 h-20 rounded-full mx-auto mb-4 object-cover border-4 border-blue-100"
-                  />
-                  <h4 className="text-lg font-bold text-gray-900 mb-1">{executive.name}</h4>
-                  <p className="text-blue-600 font-semibold text-sm mb-2">{executive.role}</p>
-                  <p className="text-gray-600 text-sm">
-                    {activeTab === "current" ? `Grade ${executive.grade}` : `Class of ${executive.graduation_year}`}
-                  </p>
+          {(activeTab === "current" ? currentExecutives : alumniExecutives).length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {(activeTab === "current" ? currentExecutives : alumniExecutives).map((executive) => (
+                <div
+                  key={executive.id}
+                  className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                >
+                  <div className="p-6 text-center">
+                    <img
+                      src={executive.image_url || "/placeholder.svg"}
+                      alt={executive.name}
+                      className="w-20 h-20 rounded-full mx-auto mb-4 object-cover border-4 border-blue-100"
+                    />
+                    <h4 className="text-lg font-bold text-gray-900 mb-1">{executive.name}</h4>
+                    <p className="text-blue-600 font-semibold text-sm mb-2">{executive.role}</p>
+                    <p className="text-gray-600 text-sm">
+                      {activeTab === "current" ? `Grade ${executive.grade}` : `Class of ${executive.graduation_year}`}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 rounded-xl">
+              <p className="text-gray-600">
+                {activeTab === "current" ? "No current executives yet." : "No alumni executives yet."}
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -488,7 +568,7 @@ function App() {
               <img
                 src="/logo-horizontal.png"
                 alt="HMS Engineering Club"
-                className="rounded-3xl shadow-2xl w-full h-96 object-contain bg-white/10 backdrop-blur-sm p-8"
+                className="rounded-3xl shadow-2xl w-full h-96 object-contain bg-white p-8"
               />
             </div>
           </div>
@@ -510,27 +590,50 @@ function App() {
                   <Calendar className="w-6 h-6 text-blue-600" />
                   <div>
                     <div className="font-semibold text-gray-900">Weekly Meetings</div>
-                    <div className="text-gray-600">Thursdays at 3:30 PM</div>
+                    <div className="text-gray-600">Wednesdays at 3:00 - 4:30 PM</div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Target className="w-6 h-6 text-teal-600" />
                   <div>
                     <div className="font-semibold text-gray-900">Location</div>
-                    <div className="text-gray-600">Room 204, McRoberts Secondary</div>
+                    <div className="text-gray-600">Room 120, McRoberts Secondary</div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <Mail className="w-6 h-6 text-purple-600" />
+                  <Users className="w-6 h-6 text-purple-600" />
+                  <div>
+                    <div className="font-semibold text-gray-900">Supervisor</div>
+                    <div className="text-gray-600">Mr. Looney</div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Mail className="w-6 h-6 text-green-600" />
                   <div>
                     <div className="font-semibold text-gray-900">Contact</div>
-                    <div className="text-gray-600">hms.engineering@mcroberts.ca</div>
+                    <div className="text-gray-600">club1engineering@gmail.com</div>
                   </div>
                 </div>
               </div>
-              <button className="w-full mt-8 bg-gradient-to-r from-blue-600 to-teal-600 text-white py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-lg">
-                Join Our Club Today
-              </button>
+              <div className="flex space-x-4 mt-8">
+                <a
+                  href="https://discord.gg/3mqBd9rtPJ"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-teal-600 text-white py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center justify-center space-x-2"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  <span>Join Discord</span>
+                </a>
+                <a
+                  href="https://www.instagram.com/hms_engineering/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center bg-gradient-to-r from-pink-500 to-purple-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-pink-600 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg"
+                >
+                  <Instagram className="w-5 h-5" />
+                </a>
+              </div>
             </div>
             <div className="space-y-8">
               <div>
@@ -555,6 +658,10 @@ function App() {
                   <li className="flex items-center space-x-3">
                     <ChevronRight className="w-5 h-5 text-blue-600" />
                     <span>University and career preparation</span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <ChevronRight className="w-5 h-5 text-blue-600" />
+                    <span>Design thinking and skill building for grades 8-12</span>
                   </li>
                 </ul>
               </div>
@@ -585,14 +692,26 @@ function App() {
               <h5 className="text-xl font-bold">HMS Engineering Club</h5>
             </div>
             <p className="text-gray-400 mb-6">McRoberts Secondary School</p>
-            <div className="flex justify-center space-x-6 text-gray-400">
-              <a href="#" className="hover:text-white transition-colors">
-                Privacy Policy
+            <div className="flex justify-center space-x-6 text-gray-400 mb-6">
+              <a
+                href="https://discord.gg/3mqBd9rtPJ"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors flex items-center space-x-2"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Discord</span>
               </a>
-              <a href="#" className="hover:text-white transition-colors">
-                Terms of Service
+              <a
+                href="https://www.instagram.com/hms_engineering/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors flex items-center space-x-2"
+              >
+                <Instagram className="w-4 h-4" />
+                <span>Instagram</span>
               </a>
-              <a href="#" className="hover:text-white transition-colors">
+              <a href="mailto:club1engineering@gmail.com" className="hover:text-white transition-colors">
                 Contact Us
               </a>
             </div>
@@ -606,12 +725,12 @@ function App() {
       {/* Modals */}
       {showAuthModal && <AuthModal onClose={handleAuthSuccess} />}
 
-      {showAdminPanel && (user || isAdminLoggedIn) && (
+      {showAdminPanel && isAdminLoggedIn && (
         <AdminPanel onClose={() => setShowAdminPanel(false)} onDataUpdate={loadData} />
       )}
 
       {/* Quick Add Panel - only visible when logged in */}
-      {(user || isAdminLoggedIn) && <QuickAddPanel onDataUpdate={loadData} />}
+      {isAdminLoggedIn && <QuickAddPanel onDataUpdate={loadData} />}
     </div>
   )
 }

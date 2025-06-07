@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { X, Plus, Edit, Trash2, Calendar, Trophy, Lightbulb, Mail } from "lucide-react"
+import { X, Plus, Edit, Trash2, Calendar, Trophy, Lightbulb, Mail, Upload } from "lucide-react"
 import { supabase } from "../lib/supabase"
 import type { Project, Executive, Announcement } from "../lib/types"
 
@@ -11,6 +11,467 @@ interface AdminPanelProps {
   onDataUpdate: () => void
 }
 
+// Convert image file to base64 data URL for simple storage
+const convertImageToDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+// Project Form Component
+const ProjectForm: React.FC<{
+  editingItem: any
+  onSave: (data: any) => void
+  onCancel: () => void
+  loading: boolean
+  error: string
+}> = ({ editingItem, onSave, onCancel, loading, error }) => {
+  const [formData, setFormData] = useState<Omit<Project, "id" | "created_at"> & { id?: string }>(
+    editingItem || {
+      title: "",
+      description: "",
+      image_url: "",
+      technologies: [],
+      github_url: "",
+      demo_url: "",
+    },
+  )
+  const [techInput, setTechInput] = useState("")
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImageFile(file)
+    setUploading(true)
+
+    try {
+      const imageUrl = await convertImageToDataUrl(file)
+      setFormData({ ...formData, image_url: imageUrl })
+    } catch (error) {
+      console.error("Error processing image:", error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const addTechnology = () => {
+    if (techInput.trim() && !formData.technologies.includes(techInput.trim())) {
+      setFormData({
+        ...formData,
+        technologies: [...formData.technologies, techInput.trim()],
+      })
+      setTechInput("")
+    }
+  }
+
+  const removeTechnology = (tech: string) => {
+    setFormData({
+      ...formData,
+      technologies: formData.technologies.filter((t) => t !== tech),
+    })
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave(formData)
+      }}
+      className="space-y-4"
+    >
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+        <input
+          type="text"
+          value={formData.title}
+          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        <textarea
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          rows={3}
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Project Image</label>
+        <div className="flex items-center space-x-3">
+          <label className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+            <Upload className="w-5 h-5 mr-2" />
+            <span>{uploading ? "Processing..." : "Choose Image"}</span>
+            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+          </label>
+          {imageFile && <span className="text-sm text-gray-600">{imageFile.name}</span>}
+        </div>
+        {formData.image_url && (
+          <img
+            src={formData.image_url || "/placeholder.svg"}
+            alt="Preview"
+            className="mt-2 w-32 h-32 object-cover rounded-lg"
+          />
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Technologies</label>
+        <div className="flex space-x-2 mb-2">
+          <input
+            type="text"
+            value={techInput}
+            onChange={(e) => setTechInput(e.target.value)}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Add technology"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                addTechnology()
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={addTechnology}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Add
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {formData.technologies.map((tech, index) => (
+            <span
+              key={index}
+              className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs flex items-center space-x-1"
+            >
+              <span>{tech}</span>
+              <button
+                type="button"
+                onClick={() => removeTechnology(tech)}
+                className="text-blue-600 hover:text-blue-800"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">GitHub URL (optional)</label>
+        <input
+          type="url"
+          value={formData.github_url || ""}
+          onChange={(e) => setFormData({ ...formData, github_url: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Demo URL (optional)</label>
+        <input
+          type="url"
+          value={formData.demo_url || ""}
+          onChange={(e) => setFormData({ ...formData, demo_url: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div className="flex space-x-3">
+        <button
+          type="submit"
+          disabled={loading || uploading}
+          className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "Saving..." : "Save Project"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Executive Form Component
+const ExecutiveForm: React.FC<{
+  editingItem: any
+  onSave: (data: any) => void
+  onCancel: () => void
+  loading: boolean
+  error: string
+}> = ({ editingItem, onSave, onCancel, loading, error }) => {
+  const [formData, setFormData] = useState<Omit<Executive, "id" | "created_at"> & { id?: string }>(
+    editingItem || {
+      name: "",
+      grade: 9,
+      role: "",
+      image_url: "",
+      graduation_year: new Date().getFullYear() + 3,
+      is_alumni: false,
+    },
+  )
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImageFile(file)
+    setUploading(true)
+
+    try {
+      const imageUrl = await convertImageToDataUrl(file)
+      setFormData({ ...formData, image_url: imageUrl })
+    } catch (error) {
+      console.error("Error processing image:", error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave(formData)
+      }}
+      className="space-y-4"
+    >
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+        <input
+          type="text"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Grade</label>
+        <select
+          value={formData.grade}
+          onChange={(e) => setFormData({ ...formData, grade: Number.parseInt(e.target.value) })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          required
+        >
+          <option value={8}>Grade 8</option>
+          <option value={9}>Grade 9</option>
+          <option value={10}>Grade 10</option>
+          <option value={11}>Grade 11</option>
+          <option value={12}>Grade 12</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+        <input
+          type="text"
+          value={formData.role}
+          onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          placeholder="e.g., President, Vice President, Secretary"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Profile Image</label>
+        <div className="flex items-center space-x-3">
+          <label className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+            <Upload className="w-5 h-5 mr-2" />
+            <span>{uploading ? "Processing..." : "Choose Image"}</span>
+            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+          </label>
+          {imageFile && <span className="text-sm text-gray-600">{imageFile.name}</span>}
+        </div>
+        {formData.image_url && (
+          <img
+            src={formData.image_url || "/placeholder.svg"}
+            alt="Preview"
+            className="mt-2 w-20 h-20 object-cover rounded-full"
+          />
+        )}
+      </div>
+
+      <div className="flex space-x-3">
+        <button
+          type="submit"
+          disabled={loading || uploading}
+          className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "Saving..." : "Save Executive"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Announcement Form Component
+const AnnouncementForm: React.FC<{
+  editingItem: any
+  onSave: (data: any) => void
+  onCancel: () => void
+  loading: boolean
+  error: string
+}> = ({ editingItem, onSave, onCancel, loading, error }) => {
+  const [formData, setFormData] = useState<Omit<Announcement, "id" | "created_at"> & { id?: string }>(
+    editingItem || {
+      title: "",
+      content: "",
+      type: "general",
+      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  )
+
+  const [expirationDays, setExpirationDays] = useState(
+    formData.expires_at
+      ? Math.round((new Date(formData.expires_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+      : 30,
+  )
+
+  useEffect(() => {
+    const newDate = new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000)
+    setFormData({ ...formData, expires_at: newDate.toISOString() })
+  }, [expirationDays])
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case "meeting":
+        return <Calendar className="w-5 h-5" />
+      case "competition":
+        return <Trophy className="w-5 h-5" />
+      case "project":
+        return <Lightbulb className="w-5 h-5" />
+      default:
+        return <Mail className="w-5 h-5" />
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave(formData)
+      }}
+      className="space-y-4"
+    >
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+        <input
+          type="text"
+          value={formData.title}
+          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+        <div className="grid grid-cols-2 gap-2">
+          {(["meeting", "project", "competition", "general"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setFormData({ ...formData, type })}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
+                formData.type === type
+                  ? "bg-blue-100 border-blue-300 text-blue-800"
+                  : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {getTypeIcon(type)}
+              <span className="capitalize">{type}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
+        <textarea
+          value={formData.content}
+          onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          rows={4}
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Auto-delete after (days)</label>
+        <div className="flex items-center space-x-2">
+          <input
+            type="range"
+            min="1"
+            max="90"
+            value={expirationDays}
+            onChange={(e) => setExpirationDays(Number.parseInt(e.target.value))}
+            className="w-full"
+          />
+          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium min-w-[3rem] text-center">
+            {expirationDays}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          This announcement will automatically be removed on {new Date(formData.expires_at || "").toLocaleDateString()}
+        </p>
+      </div>
+
+      <div className="flex space-x-3">
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "Saving..." : "Save Announcement"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Main AdminPanel Component
 const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
   const [activeTab, setActiveTab] = useState<"projects" | "executives" | "announcements">("projects")
   const [projects, setProjects] = useState<Project[]>([])
@@ -19,6 +480,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
   const [editingItem, setEditingItem] = useState<any>(null)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     loadData()
@@ -32,39 +494,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
         supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       ])
 
-      if (projectsRes.data) setProjects(projectsRes.data)
-      if (execsRes.data) setExecutives(execsRes.data)
-      if (announcementsRes.data) setAnnouncements(announcementsRes.data)
+      // Fix TypeScript errors with proper type assertions
+      if (projectsRes.data) setProjects(projectsRes.data as unknown as Project[])
+      if (execsRes.data) setExecutives(execsRes.data as unknown as Executive[])
+      if (announcementsRes.data) setAnnouncements(announcementsRes.data as unknown as Announcement[])
     } catch (error) {
       console.error("Error loading data:", error)
     }
   }
 
-  const uploadImage = async (file: File): Promise<string> => {
-    const fileExt = file.name.split(".").pop()
-    const fileName = `${Math.random()}.${fileExt}`
-    const filePath = `${fileName}`
-
-    const { error: uploadError } = await supabase.storage.from("images").upload(filePath, file)
-
-    if (uploadError) {
-      throw uploadError
-    }
-
-    const { data } = supabase.storage.from("images").getPublicUrl(filePath)
-
-    return data.publicUrl
-  }
-
   const handleSaveProject = async (projectData: Omit<Project, "id" | "created_at"> & { id?: string }) => {
     setLoading(true)
+    setError("")
     try {
       if (projectData.id) {
-        // Update existing project
         const { error } = await supabase.from("projects").update(projectData).eq("id", projectData.id)
         if (error) throw error
       } else {
-        // Create new project
         const { error } = await supabase.from("projects").insert([projectData])
         if (error) throw error
       }
@@ -75,6 +521,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
       setEditingItem(null)
     } catch (error) {
       console.error("Error saving project:", error)
+      setError("Error saving project. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
@@ -82,11 +529,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
 
   const handleSaveExecutive = async (execData: Omit<Executive, "id" | "created_at"> & { id?: string }) => {
     setLoading(true)
+    setError("")
     try {
-      // Calculate graduation year and alumni status
       const currentYear = new Date().getFullYear()
-      const graduationYear = currentYear + (12 - execData.grade)
-      const isAlumni = graduationYear <= currentYear
+      const currentMonth = new Date().getMonth() + 1
+
+      let graduationYear: number
+      if (execData.grade === 12) {
+        graduationYear = currentMonth < 6 ? currentYear : currentYear
+      } else {
+        graduationYear = currentYear + (12 - execData.grade)
+      }
+
+      const isAlumni = (() => {
+        if (graduationYear < currentYear) return true
+        if (graduationYear > currentYear) return false
+        const currentDate = new Date()
+        const graduationDate = new Date(currentYear, 5, 20)
+        return currentDate > graduationDate
+      })()
 
       const execWithCalculatedFields = {
         ...execData,
@@ -95,11 +556,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
       }
 
       if (execData.id) {
-        // Update existing executive
         const { error } = await supabase.from("executives").update(execWithCalculatedFields).eq("id", execData.id)
         if (error) throw error
       } else {
-        // Create new executive
         const { error } = await supabase.from("executives").insert([execWithCalculatedFields])
         if (error) throw error
       }
@@ -110,6 +569,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
       setEditingItem(null)
     } catch (error) {
       console.error("Error saving executive:", error)
+      setError("Error saving executive. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
@@ -119,13 +579,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
     announcementData: Omit<Announcement, "id" | "created_at"> & { id?: string },
   ) => {
     setLoading(true)
+    setError("")
     try {
       if (announcementData.id) {
-        // Update existing announcement
         const { error } = await supabase.from("announcements").update(announcementData).eq("id", announcementData.id)
         if (error) throw error
       } else {
-        // Create new announcement
         const { error } = await supabase.from("announcements").insert([announcementData])
         if (error) throw error
       }
@@ -136,6 +595,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
       setEditingItem(null)
     } catch (error) {
       console.error("Error saving announcement:", error)
+      setError("Error saving announcement. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
@@ -145,427 +605,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
     if (!confirm("Are you sure you want to delete this item?")) return
 
     setLoading(true)
+    setError("")
     try {
       const { error } = await supabase.from(table).delete().eq("id", id)
-
       if (error) throw error
 
       await loadData()
       onDataUpdate()
     } catch (error) {
       console.error("Error deleting item:", error)
+      setError("Error deleting item. Please check your Supabase configuration.")
     } finally {
       setLoading(false)
     }
   }
 
-  const ProjectForm = () => {
-    const [formData, setFormData] = useState<Omit<Project, "id" | "created_at"> & { id?: string }>(
-      editingItem || {
-        title: "",
-        description: "",
-        image_url: "",
-        technologies: [],
-        github_url: "",
-        demo_url: "",
-      },
-    )
-    const [techInput, setTechInput] = useState("")
-
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
-
-      try {
-        const imageUrl = await uploadImage(file)
-        setFormData({ ...formData, image_url: imageUrl })
-      } catch (error) {
-        console.error("Error uploading image:", error)
-      }
-    }
-
-    const addTechnology = () => {
-      if (techInput.trim() && !formData.technologies.includes(techInput.trim())) {
-        setFormData({
-          ...formData,
-          technologies: [...formData.technologies, techInput.trim()],
-        })
-        setTechInput("")
-      }
-    }
-
-    const removeTechnology = (tech: string) => {
-      setFormData({
-        ...formData,
-        technologies: formData.technologies.filter((t) => t !== tech),
-      })
-    }
-
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleSaveProject(formData)
-        }}
-        className="space-y-4"
-      >
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
-          <input
-            type="text"
-            value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-          <textarea
-            value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            rows={3}
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Project Image</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-          {formData.image_url && (
-            <img
-              src={formData.image_url || "/placeholder.svg"}
-              alt="Preview"
-              className="mt-2 w-32 h-32 object-cover rounded-lg"
-            />
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Technologies</label>
-          <div className="flex space-x-2 mb-2">
-            <input
-              type="text"
-              value={techInput}
-              onChange={(e) => setTechInput(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="Add technology"
-            />
-            <button
-              type="button"
-              onClick={addTechnology}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Add
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {formData.technologies.map((tech, index) => (
-              <span
-                key={index}
-                className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs flex items-center space-x-1"
-              >
-                <span>{tech}</span>
-                <button
-                  type="button"
-                  onClick={() => removeTechnology(tech)}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">GitHub URL (optional)</label>
-          <input
-            type="url"
-            value={formData.github_url || ""}
-            onChange={(e) => setFormData({ ...formData, github_url: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Demo URL (optional)</label>
-          <input
-            type="url"
-            value={formData.demo_url || ""}
-            onChange={(e) => setFormData({ ...formData, demo_url: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="flex space-x-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Project"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowForm(false)
-              setEditingItem(null)
-            }}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    )
-  }
-
-  const ExecutiveForm = () => {
-    const [formData, setFormData] = useState<Omit<Executive, "id" | "created_at"> & { id?: string }>(
-      editingItem || {
-        name: "",
-        grade: 9,
-        role: "",
-        image_url: "",
-        graduation_year: new Date().getFullYear() + 3,
-        is_alumni: false,
-      },
-    )
-
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
-
-      try {
-        const imageUrl = await uploadImage(file)
-        setFormData({ ...formData, image_url: imageUrl })
-      } catch (error) {
-        console.error("Error uploading image:", error)
-      }
-    }
-
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleSaveExecutive(formData)
-        }}
-        className="space-y-4"
-      >
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-          <input
-            type="text"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Grade</label>
-          <select
-            value={formData.grade}
-            onChange={(e) => setFormData({ ...formData, grade: Number.parseInt(e.target.value) })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            required
-          >
-            <option value={9}>Grade 9</option>
-            <option value={10}>Grade 10</option>
-            <option value={11}>Grade 11</option>
-            <option value={12}>Grade 12</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-          <input
-            type="text"
-            value={formData.role}
-            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="e.g., President, Vice President, Secretary"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Profile Image</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-          {formData.image_url && (
-            <img
-              src={formData.image_url || "/placeholder.svg"}
-              alt="Preview"
-              className="mt-2 w-20 h-20 object-cover rounded-full"
-            />
-          )}
-        </div>
-
-        <div className="flex space-x-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Executive"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowForm(false)
-              setEditingItem(null)
-            }}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    )
-  }
-
-  const AnnouncementForm = () => {
-    const [formData, setFormData] = useState<Omit<Announcement, "id" | "created_at"> & { id?: string }>(
-      editingItem || {
-        title: "",
-        content: "",
-        type: "general",
-        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // Default 30 days
-      },
-    )
-
-    const [expirationDays, setExpirationDays] = useState(
-      formData.expires_at
-        ? Math.round((new Date(formData.expires_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
-        : 30,
-    )
-
-    useEffect(() => {
-      // Update expiration date when days change
-      const newDate = new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000)
-      setFormData({ ...formData, expires_at: newDate.toISOString() })
-    }, [expirationDays])
-
-    const getTypeIcon = (type: string) => {
-      switch (type) {
-        case "meeting":
-          return <Calendar className="w-5 h-5" />
-        case "competition":
-          return <Trophy className="w-5 h-5" />
-        case "project":
-          return <Lightbulb className="w-5 h-5" />
-        default:
-          return <Mail className="w-5 h-5" />
-      }
-    }
-
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleSaveAnnouncement(formData)
-        }}
-        className="space-y-4"
-      >
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
-          <input
-            type="text"
-            value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(["meeting", "project", "competition", "general"] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setFormData({ ...formData, type })}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
-                  formData.type === type
-                    ? "bg-blue-100 border-blue-300 text-blue-800"
-                    : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {getTypeIcon(type)}
-                <span className="capitalize">{type}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
-          <textarea
-            value={formData.content}
-            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            rows={4}
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Auto-delete after (days)</label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="range"
-              min="1"
-              max="90"
-              value={expirationDays}
-              onChange={(e) => setExpirationDays(Number.parseInt(e.target.value))}
-              className="w-full"
-            />
-            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium min-w-[3rem] text-center">
-              {expirationDays}
-            </span>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            This announcement will automatically be removed on{" "}
-            {new Date(formData.expires_at || "").toLocaleDateString()}
-          </p>
-        </div>
-
-        <div className="flex space-x-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Announcement"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowForm(false)
-              setEditingItem(null)
-            }}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    )
+  const handleCancel = () => {
+    setShowForm(false)
+    setEditingItem(null)
+    setError("")
   }
 
   const getAnnouncementIcon = (type: string) => {
@@ -583,7 +641,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">Admin Panel</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -591,9 +649,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
           </button>
         </div>
 
-        <div className="flex h-full">
+        <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-64 bg-gray-50 border-r border-gray-200 p-4">
+          <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto">
             <nav className="space-y-2">
               {[
                 { id: "projects", label: "Projects", count: projects.length },
@@ -620,8 +678,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
               <h3 className="text-xl font-semibold text-gray-900 capitalize">Manage {activeTab}</h3>
               <button
                 onClick={() => {
+                  console.log("Add New clicked for:", activeTab)
                   setShowForm(true)
                   setEditingItem(null)
+                  setError("")
                 }}
                 className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
               >
@@ -635,9 +695,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
                 <h4 className="text-lg font-semibold text-gray-900 mb-4">
                   {editingItem ? "Edit" : "Add New"} {activeTab.slice(0, -1)}
                 </h4>
-                {activeTab === "projects" && <ProjectForm />}
-                {activeTab === "executives" && <ExecutiveForm />}
-                {activeTab === "announcements" && <AnnouncementForm />}
+                {activeTab === "projects" && (
+                  <ProjectForm
+                    editingItem={editingItem}
+                    onSave={handleSaveProject}
+                    onCancel={handleCancel}
+                    loading={loading}
+                    error={error}
+                  />
+                )}
+                {activeTab === "executives" && (
+                  <ExecutiveForm
+                    editingItem={editingItem}
+                    onSave={handleSaveExecutive}
+                    onCancel={handleCancel}
+                    loading={loading}
+                    error={error}
+                  />
+                )}
+                {activeTab === "announcements" && (
+                  <AnnouncementForm
+                    editingItem={editingItem}
+                    onSave={handleSaveAnnouncement}
+                    onCancel={handleCancel}
+                    loading={loading}
+                    error={error}
+                  />
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -781,6 +865,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onDataUpdate }) => {
                       onClick={() => {
                         setShowForm(true)
                         setEditingItem(null)
+                        setError("")
                       }}
                       className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                     >

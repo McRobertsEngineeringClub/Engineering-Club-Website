@@ -1,9 +1,21 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://your-project.supabase.co"
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key"
+// Get Supabase URL and key from environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ""
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ""
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Create a singleton instance of the Supabase client
+let supabaseInstance: ReturnType<typeof createClient> | null = null
+
+export const supabase = (() => {
+  if (!supabaseInstance) {
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
+  }
+  return supabaseInstance
+})()
+
+// Check if Supabase is properly configured
+export const isSupabaseConfigured = supabaseUrl && supabaseAnonKey
 
 // Database types
 export interface Database {
@@ -72,16 +84,19 @@ export interface Database {
           content: string
           type: "meeting" | "project" | "competition" | "general"
           created_at: string
+          expires_at?: string
         }
         Insert: {
           title: string
           content: string
           type: "meeting" | "project" | "competition" | "general"
+          expires_at?: string
         }
         Update: {
           title?: string
           content?: string
           type?: "meeting" | "project" | "competition" | "general"
+          expires_at?: string
         }
       }
     }
