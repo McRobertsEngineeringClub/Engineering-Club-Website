@@ -21,44 +21,37 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     setError("")
 
     try {
-      // AUTHORIZED EMAILS - automatically grant access to these emails
+      // AUTHORIZED EMAILS - automatic access (no password needed)
       const authorizedEmails = ["club1engineering@gmail.com", "hms.engineering@mcroberts.ca", "admin@mcroberts.ca"]
-
-      console.log("Checking credentials...")
-      console.log("Input email:", email.trim())
-      console.log("Authorized emails:", authorizedEmails)
 
       // Check if email is in authorized list
       if (authorizedEmails.includes(email.trim().toLowerCase())) {
-        console.log("✅ Authorized email detected - granting admin access!")
-
-        // Store login state in localStorage
+        // Remove debug logging for security
         localStorage.setItem("isAdminLoggedIn", "true")
         localStorage.setItem("adminEmail", email.trim())
         onClose()
         return
       }
 
-      // Fallback: Check against environment variables or hardcoded credentials
-      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || "club1engineering@gmail.com"
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "$1LpX#ZyW4o9k@T!3"
+      // Fallback: Check against environment variables
+      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
+      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD
 
-      console.log("Checking fallback credentials...")
-      console.log("Admin email:", adminEmail)
-      console.log("Input password:", password)
-
-      if (email.trim().toLowerCase() === adminEmail.toLowerCase() && password === adminPassword) {
-        console.log("✅ Fallback credentials matched!")
+      if (
+        adminEmail &&
+        adminPassword &&
+        email.trim().toLowerCase() === adminEmail.toLowerCase() &&
+        password === adminPassword
+      ) {
         localStorage.setItem("isAdminLoggedIn", "true")
         localStorage.setItem("adminEmail", email.trim())
         onClose()
         return
       }
 
-      // If neither authorized email nor correct credentials
-      setError("Access denied. Please use an authorized email address or correct credentials.")
+      // Generic error message (don't reveal which part failed)
+      setError("Invalid credentials. Please check your email and password.")
     } catch (err) {
-      console.error("Login error:", err)
       setError("An error occurred during login.")
     } finally {
       setLoading(false)
@@ -109,7 +102,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your password"
-                required
               />
               <button
                 type="button"
@@ -132,16 +124,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
         <div className="px-6 pb-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">Quick Access</h3>
+            <h3 className="font-semibold text-blue-900 mb-2">Access Information</h3>
             <div className="text-blue-800 text-sm space-y-1">
-              <p>• Authorized emails get automatic access</p>
-              <p>• Use your club email address</p>
+              <p>• Use your authorized club email address</p>
               <p>• Contact admin if you need access</p>
+              <p>• Only club executives can access admin features</p>
             </div>
           </div>
-          <p className="text-center text-sm text-gray-600 mt-4">
-            Only authorized executives can access the admin panel.
-          </p>
         </div>
       </div>
     </div>
