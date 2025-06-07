@@ -21,29 +21,22 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     setError("")
 
     try {
-      // Get admin credentials from environment variables ONLY
       const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
       const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD
 
-      // Check if environment variables are configured
       if (!adminEmail || !adminPassword) {
-        setError("Admin credentials not configured. Contact system administrator.")
+        setError("Admin credentials are not configured.")
         return
       }
 
-      // SECURE CHECK: Both email AND password must match
       if (email.trim().toLowerCase() === adminEmail.toLowerCase() && password === adminPassword) {
-        console.log("✅ Admin credentials verified!")
         localStorage.setItem("isAdminLoggedIn", "true")
         localStorage.setItem("adminEmail", email.trim())
         onClose()
-        return
+      } else {
+        setError("Invalid email or password.")
       }
-
-      // If credentials don't match, deny access
-      setError("Invalid email or password. Access denied.")
-    } catch (err) {
-      console.error("Login error:", err)
+    } catch {
       setError("An error occurred during login.")
     } finally {
       setLoading(false)
@@ -114,17 +107,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
             {loading ? "Signing In..." : "Sign In"}
           </button>
         </form>
-
-        <div className="px-6 pb-6">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <h3 className="font-semibold text-red-900 mb-2">🔒 Secure Access</h3>
-            <div className="text-red-800 text-sm space-y-1">
-              <p>• Both email AND password are required</p>
-              <p>• Credentials are stored securely in environment variables</p>
-              <p>• Contact club supervisor if you need access</p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )
